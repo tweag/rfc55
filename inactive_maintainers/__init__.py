@@ -1,6 +1,5 @@
 import os
 import sys
-from datetime import date, datetime, time
 from sys import stderr
 
 from github import Github
@@ -22,9 +21,7 @@ def main() -> None:
     if token is None:
         print("environment variable GITHUB_TOKEN not set", file=sys.stderr)
         sys.exit(1)
-    year = date.today().year - 1
-    start_of_year = datetime.combine(date(year, 1, 1), time.min)
-    print(f"Reporting from {start_of_year}")
+
     gh = Github(
         os.environ["GITHUB_TOKEN"],
         user_agent="nixpkgs-inactive-committers",
@@ -35,25 +32,20 @@ def main() -> None:
     print(gh.get_rate_limit(), file=stderr)
     org = gh.get_organization("nixos")
     nixpkgs = org.get_repo("nixpkgs")
+
     committers = org.get_team_by_slug("nixpkgs-committers").get_members()
     sorted_committers = sorted(list(committers), key=lambda c: c.login.lower())
 
-    blacklist = ["GrahamcOfBorg"]
-
     for member in sorted_committers:
-        if member.login in blacklist:
-            continue
-        commits = nixpkgs.get_commits(author=member, since=start_of_year)
-        if not has_commits(commits):
-            if member.login == "lf-": # broken github api? https://github.com/NixOS/nixpkgs/issues/88867#issuecomment-2603174426
-               print(
-                   f"- @{member.login:<20} [commits](https://github.com/NixOS/nixpkgs/commits?author={member.login}) -> actual check the link here, api is broken"
-               )
-            else:
-               print(
-                   f"- @{member.login:<20} [commits](https://github.com/NixOS/nixpkgs/commits?author={member.login})"
-               )
+        # Check whether the user used their commit access in the past year
+        # https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#list-repository-activities
+        url_parameters = dict()
+        url_parameters["actor"] = member.login
+        url_parameters["time_period"] = "year"
+        _, data = nixpkgs.requester.requestJsonAndCheck("GET", f"{nixpkgs.url}/activity", parameters=url_parameters)
 
+        if len(data) == 0:
+            print(f"{member.login:<20}: No activity requiring commit access within the past year")
 
 if __name__ == "main":
     main()

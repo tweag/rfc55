@@ -8,5 +8,6 @@ mkShell {
       ps.mypy
       ps.PyGithub
     ]))
+    pyright
   ];
 }
